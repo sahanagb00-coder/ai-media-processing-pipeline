@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intelligent Media Processing Pipeline</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #111827, #1e3a8a);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .container {
+            width: 92%;
+            max-width: 1200px;
+            margin: auto;
+            padding: 35px 0;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 36px;
+        }
+
+        header p {
+            color: #cbd5e1;
+            line-height: 1.6;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 28px;
+            backdrop-filter: blur(12px);
+            margin-bottom: 25px;
+        }
+
+        .upload-box {
+            border: 2px dashed #93c5fd;
+            border-radius: 16px;
+            padding: 35px;
+            text-align: center;
+        }
+
+        input[type="file"] {
+            margin: 20px 0;
+            padding: 12px;
+            width: 100%;
+            max-width: 550px;
+            background: white;
+            border-radius: 8px;
+        }
+
+        button {
+            background: #2563eb;
+            border: none;
+            color: white;
+            padding: 14px 28px;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        button:disabled {
+            background: #64748b;
+            cursor: not-allowed;
+        }
+
+        #preview {
+            max-width: 100%;
+            max-height: 320px;
+            margin-top: 22px;
+            border-radius: 12px;
+            display: none;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.25);
+            line-height: 1.7;
+        }
+
+        .success-status {
+            border-left: 4px solid #22c55e;
+        }
+
+        .error-status {
+            border-left: 4px solid #ef4444;
+        }
+
+        .processing-status {
+            border-left: 4px solid #facc15;
+        }
+
+        .summary-box {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .summary-item {
+            background: rgba(0, 0, 0, 0.25);
+            padding: 18px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .summary-item h3 {
+            margin: 0 0 8px;
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+
+        .summary-value {
+            font-size: 25px;
+            font-weight: bold;
+        }
+
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 18px;
+        }
+
+        .result-card {
+            background: rgba(255, 255, 255, 0.12);
+            padding: 20px;
+            border-radius: 14px;
+            overflow-wrap: anywhere;
+        }
+
+        .result-card h3 {
+            margin-top: 0;
+            color: #93c5fd;
+        }
+
+        .success {
+            color: #86efac;
+        }
+
+        .warning {
+            color: #fde68a;
+        }
+
+        .danger {
+            color: #fca5a5;
+        }
+
+        .small-text {
+            font-size: 12px;
+            word-break: break-all;
+            color: #cbd5e1;
+        }
+
+        .signal {
+            display: inline-block;
+            padding: 5px 9px;
+            margin: 3px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.12);
+            font-size: 12px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 27px;
+            }
+
+            .card {
+                padding: 18px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <header>
+        <h1>Intelligent Media Processing Pipeline</h1>
+
+        <p>
+            Upload a vehicle image and analyze quality,
+            duplicates, OCR, metadata, screenshots and possible tampering.
+        </p>
+    </header>
+
+    <div class="card">
+
+        <div class="upload-box">
+
+            <h2>Upload Vehicle Image</h2>
+
+            <p>Supported formats: JPEG, PNG, WEBP</p>
+
+            <input
+                type="file"
+                id="imageInput"
+                accept="image/jpeg,image/png,image/webp"
+            >
+
+            <br>
+
+            <button id="uploadButton">
+                Upload and Analyze
+            </button>
+
+            <br>
+
+            <img id="preview" alt="Image Preview">
+
+        </div>
+
+        <div id="status" class="status">
+            Select an image to begin analysis.
+        </div>
+
+    </div>
+
+    <div id="results" class="card hidden">
+
+        <h2>Analysis Results</h2>
+
+        <div id="summaryBox" class="summary-box"></div>
+
+        <div id="resultGrid" class="result-grid"></div>
+
+        <details>
+            <summary>View Complete JSON</summary>
+            <pre id="jsonResult"></pre>
+        </details>
+
+    </div>
+
+</div>
+
+<script>
+
+const imageInput = document.getElementById("imageInput");
+const preview = document.getElementById("preview");
+const uploadButton = document.getElementById("uploadButton");
+const statusBox = document.getElementById("status");
+const resultsBox = document.getElementById("results");
+const summaryBox = document.getElementById("summaryBox");
+const resultGrid = document.getElementById("resultGrid");
+const jsonResult = document.getElementById("jsonResult");
+
+
+// Image preview
+imageInput.addEventListener("change", function () {
+
+    const file = imageInput.files[0];
+
+    if (!file) {
+        preview.style.display = "none";
+        return;
+    }
+
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
+
+    statusBox.className = "status";
+
+    statusBox.innerHTML =
+        `Selected file: <strong>${escapeHtml(file.name)}</strong>`;
+});
+
+
+// Upload image
+uploadButton.addEventListener("click", uploadImage);
+
+
+async function uploadImage() {
+
+    const file = imageInput.files[0];
+
+    if (!file) {
+        alert("Please select an image first.");
+        return;
+    }
+
+    uploadButton.disabled = true;
+
+    resultsBox.classList.add("hidden");
+
+    statusBox.className = "status processing-status";
+
+    statusBox.innerHTML = "Uploading image...";
+
+    const formData = new FormData();
+
+    formData.append("file", file);
+
+    try {
+
+        const response = await fetch("/api/v1/images", {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail || "Upload failed");
+        }
+
+        const processingId = data.processing_id;
+
+        statusBox.innerHTML = `
+            <strong>Image uploaded successfully.</strong>
+            <br>
+            Processing ID:
+            <span class="small-text">${processingId}</span>
+            <br><br>
+            Image is being analyzed...
+        `;
+
+        checkStatus(processingId);
+
+    } catch (error) {
+
+        showError(error.message);
+
+        uploadButton.disabled = false;
+    }
+}
+
+
+// Check processing status
+async function checkStatus(processingId) {
+
+    try {
+
+        const response = await fetch(
+            `/api/v1/images/${processingId}/status`
+        );
+
+        const data = await response.json();
+
+        if (data.status === "pending" ||
+            data.status === "processing") {
+
+            statusBox.className = "status processing-status";
+
+            statusBox.innerHTML = `
+                Status:
+                <strong>${data.status}</strong>
+                <br>
+                Please wait...
+            `;
+
+            setTimeout(
+                () => checkStatus(processingId),
+                1000
+            );
+
+            return;
+        }
+
+        if (data.status === "failed") {
+            throw new Error(data.error || "Processing failed");
+        }
+
+        const resultResponse = await fetch(
+            `/api/v1/images/${processingId}/results`
+        );
+
+        const resultData = await resultResponse.json();
+
+        displayResults(resultData);
+
+        statusBox.className = "status success-status";
+
+        statusBox.innerHTML =
+            "<strong>Analysis completed successfully.</strong>";
+
+        uploadButton.disabled = false;
+
+    } catch (error) {
+
+        showError(error.message);
+
+        uploadButton.disabled = false;
+    }
+}
+
+
+// Display results
+function displayResults(data) {
+
+    const analysis = data.analysis;
+
+    if (!analysis) {
+        return;
+    }
+
+    resultsBox.classList.remove("hidden");
+
+    resultGrid.innerHTML = "";
+
+    summaryBox.innerHTML = "";
+
+    const issues =
+        analysis.summary?.issues_detected || [];
+
+    const totalChecks =
+        analysis.summary?.total_checks || 10;
+
+    summaryBox.innerHTML = `
+
+        <div class="summary-item">
+            <h3>Total Checks</h3>
+            <div class="summary-value">
+                ${totalChecks}
+            </div>
+        </div>
+
+        <div class="summary-item">
+            <h3>Issues Detected</h3>
+            <div class="summary-value ${
+                issues.length ? "danger" : "success"
+            }">
+                ${issues.length}
+            </div>
+        </div>
+
+        <div class="summary-item">
+            <h3>Overall Status</h3>
+            <div class="summary-value ${
+                issues.length ? "warning" : "success"
+            }">
+                ${issues.length ? "Review" : "Passed"}
+            </div>
+        </div>
+
+    `;
+
+    if (issues.length > 0) {
+
+        resultGrid.innerHTML += `
+
+            <div class="result-card">
+
+                <h3>Detected Issues</h3>
+
+                <ul>
+                    ${issues.map(issue =>
+                        `<li>${escapeHtml(issue)}</li>`
+                    ).join("")}
+                </ul>
+
+            </div>
+
+        `;
+    }
+
+    addCard(
+        "Blur Detection",
+        analysis.blur
+    );
+
+    addCard(
+        "Brightness Analysis",
+        analysis.brightness
+    );
+
+    addCard(
+        "Dimension Validation",
+        analysis.dimensions
+    );
+
+    addCard(
+        "Duplicate Detection",
+        analysis.duplicate
+    );
+
+    addCard(
+        "Vehicle Number OCR",
+        analysis.vehicle_number
+    );
+
+    addCard(
+        "Screenshot Detection",
+        analysis.screenshot_analysis
+    );
+
+    addCard(
+        "Metadata Analysis",
+        analysis.metadata_analysis
+    );
+
+    addCard(
+        "Suspicious Editing",
+        analysis.editing_analysis
+    );
+
+    addCard(
+        "File Integrity",
+        {
+            sha256: analysis.file_hash,
+            perceptual_hash: analysis.perceptual_hash
+        }
+    );
+
+    jsonResult.textContent =
+        JSON.stringify(data, null, 2);
+}
+
+
+// Generic result card
+function addCard(title, data) {
+
+    if (!data) {
+        return;
+    }
+
+    resultGrid.innerHTML += `
+
+        <div class="result-card">
+
+            <h3>${title}</h3>
+
+            <pre>${escapeHtml(
+                JSON.stringify(data, null, 2)
+            )}</pre>
+
+        </div>
+
+    `;
+}
+
+
+// Error display
+function showError(message) {
+
+    statusBox.className = "status error-status";
+
+    statusBox.innerHTML = `
+        <strong>Error:</strong>
+        ${escapeHtml(message)}
+    `;
+}
+
+
+// Security helper
+function escapeHtml(value) {
+
+    if (value === null || value === undefined) {
+        return "";
+    }
+
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+</script>
+
+</body>
+</html>

@@ -1,9 +1,8 @@
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
 opencv-python-headless
 imagehash
 numpy
 Pillow
 SQLAlchemy
-pytesseract

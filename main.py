@@ -6,6 +6,7 @@ import logging
 import threading
 import time
 import re
+import easyocr
 from pathlib import Path
 from datetime import datetime
 

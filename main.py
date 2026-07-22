@@ -6,14 +6,13 @@ import logging
 import threading
 import time
 import re
-import easyocr
+
 from pathlib import Path
 from datetime import datetime
 
 import cv2
 import numpy as np
 import imagehash
-import easyocr
 
 from PIL import Image, ExifTags
 
@@ -77,26 +76,10 @@ class ImageJob(Base):
     __tablename__ = "image_jobs"
 
     id = Column(String, primary_key=True)
-
-    original_filename = Column(
-        String,
-        nullable=False
-    )
-
-    file_path = Column(
-        String,
-        nullable=False
-    )
-
-    content_type = Column(
-        String,
-        nullable=False
-    )
-
-    file_size = Column(
-        Integer,
-        nullable=False
-    )
+    original_filename = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    file_size = Column(Integer, nullable=False)
 
     status = Column(
         String,
@@ -104,15 +87,8 @@ class ImageJob(Base):
         nullable=False
     )
 
-    result = Column(
-        Text,
-        nullable=True
-    )
-
-    error_message = Column(
-        Text,
-        nullable=True
-    )
+    result = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
 
     created_at = Column(
         DateTime,
@@ -149,20 +125,6 @@ Base.metadata.create_all(engine)
 
 
 # ============================================================
-# OCR INITIALIZATION
-# ============================================================
-
-logger.info("Loading EasyOCR model...")
-
-ocr_reader = easyocr.Reader(
-    ["en"],
-    gpu=False
-)
-
-logger.info("EasyOCR model loaded successfully")
-
-
-# ============================================================
 # FASTAPI
 # ============================================================
 
@@ -180,14 +142,9 @@ app.mount(
 )
 
 
-@app.get(
-    "/",
-    include_in_schema=False
-)
+@app.get("/", include_in_schema=False)
 def home():
-    return FileResponse(
-        "static/index.html"
-    )
+    return FileResponse("static/index.html")
 
 
 # ============================================================
@@ -280,7 +237,6 @@ def analyze_brightness(image):
 
     return {
         "issue": issue,
-
         "mean_brightness": round(
             brightness,
             2
@@ -304,9 +260,7 @@ def analyze_dimensions(image):
 
     return {
         "width": width,
-
         "height": height,
-
         "valid": valid,
 
         "issue": (
@@ -355,16 +309,9 @@ def detect_duplicate(
 
             db.commit()
 
-            logger.info(
-                "Exact duplicate detected: %s",
-                exact.image_id
-            )
-
             return {
                 "is_duplicate": True,
-
                 "type": "exact",
-
                 "matched_processing_id":
                     exact.image_id
             }
@@ -411,29 +358,17 @@ def detect_duplicate(
 
                     db.commit()
 
-                    logger.info(
-                        "Perceptual duplicate detected: %s",
-                        item.image_id
-                    )
-
                     return {
                         "is_duplicate": True,
-
                         "type": "perceptual",
-
                         "matched_processing_id":
                             item.image_id,
-
                         "hash_distance":
                             int(distance)
                     }
 
-            except Exception as error:
-
-                logger.warning(
-                    "Perceptual hash comparison failed: %s",
-                    error
-                )
+            except Exception:
+                continue
 
 
         db.merge(
@@ -449,9 +384,7 @@ def detect_duplicate(
 
         return {
             "is_duplicate": False,
-
             "type": None,
-
             "matched_processing_id": None
         }
 
@@ -465,143 +398,15 @@ def detect_duplicate(
 # VEHICLE NUMBER OCR
 # ============================================================
 
-INDIAN_STATE_CODES = {
-    "AP", "AR", "AS", "BR", "CG", "GA", "GJ",
-    "HR", "HP", "JH", "KA", "KL", "MP", "MH",
-    "MN", "ML", "MZ", "NL", "OD", "PB", "RJ",
-    "SK", "TN", "TS", "TR", "UP", "UK", "WB",
-    "AN", "CH", "DN", "DD", "DL", "JK", "LA",
-    "LD", "PY"
-}
-
-
-def normalize_text(text):
-
-    return re.sub(
-        r"[^A-Z0-9]",
-        "",
-        text.upper()
-    )
-
-
-def is_valid_vehicle_number(text):
-
-    pattern = (
-        r"^[A-Z]{2}"
-        r"[0-9]{1,2}"
-        r"[A-Z]{1,3}"
-        r"[0-9]{4}$"
-    )
-
-    if not re.fullmatch(
-        pattern,
-        text
-    ):
-
-        return False
-
-
-    return (
-        text[:2]
-        in
-        INDIAN_STATE_CODES
-    )
-
-
 def extract_vehicle_number(file_path):
 
-    image = cv2.imread(
-        file_path
-    )
-
-
-    if image is None:
-
-        return {
-            "detected": False,
-
-            "valid_format": False,
-
-            "text": None,
-
-            "source": "EasyOCR",
-
-            "reason":
-                "Unable to read image"
-        }
-
-
-    try:
-
-        texts = ocr_reader.readtext(
-            image,
-            detail=0
-        )
-
-
-        logger.info(
-            "OCR detected: %s",
-            texts
-        )
-
-
-        for text in texts:
-
-            cleaned = normalize_text(
-                text
-            )
-
-
-            if is_valid_vehicle_number(
-                cleaned
-            ):
-
-                return {
-                    "detected": True,
-
-                    "valid_format": True,
-
-                    "text": cleaned,
-
-                    "source": "EasyOCR",
-
-                    "raw_text": texts
-                }
-
-
-        return {
-            "detected": False,
-
-            "valid_format": False,
-
-            "text": None,
-
-            "source": "EasyOCR",
-
-            "raw_text": texts,
-
-            "reason":
-                "No valid Indian vehicle number detected"
-        }
-
-
-    except Exception as error:
-
-        logger.exception(
-            "OCR failed"
-        )
-
-        return {
-            "detected": False,
-
-            "valid_format": False,
-
-            "text": None,
-
-            "source": "EasyOCR",
-
-            "reason": str(error)
-        }
+    return {
+        "detected": False,
+        "valid_format": False,
+        "text": None,
+        "source": "OCR disabled for low-memory deployment",
+        "reason": "EasyOCR removed to prevent Render memory overflow"
+    }
 
 
 # ============================================================
@@ -674,12 +479,9 @@ def analyze_metadata(file_path):
 
     metadata = {}
 
-
     try:
 
-        image = Image.open(
-            file_path
-        )
+        image = Image.open(file_path)
 
         exif = image.getexif()
 
@@ -720,13 +522,9 @@ def analyze_metadata(file_path):
 
         return {
             "has_exif": False,
-
             "metadata_count": 0,
-
             "software": None,
-
             "metadata": {},
-
             "error": str(error)
         }
 
@@ -873,6 +671,7 @@ def analyze_image(
 
 
     results["summary"] = {
+
         "issues_detected": issues,
 
         "has_issues": len(
@@ -882,9 +681,13 @@ def analyze_image(
         "total_checks": 8,
 
         "overall_status": (
+
             "failed"
+
             if len(issues) > 0
+
             else
+
             "passed"
         )
     }
@@ -925,11 +728,6 @@ def process_image(
 
             if not job:
 
-                logger.error(
-                    "Job not found: %s",
-                    job_id
-                )
-
                 return
 
 
@@ -938,13 +736,6 @@ def process_image(
             job.updated_at = datetime.utcnow()
 
             db.commit()
-
-
-            logger.info(
-                "Processing job %s, attempt %s",
-                job_id,
-                attempt
-            )
 
 
             results = analyze_image(
@@ -957,6 +748,7 @@ def process_image(
                 results
             )
 
+
             job.status = "completed"
 
             job.error_message = None
@@ -966,19 +758,13 @@ def process_image(
             db.commit()
 
 
-            logger.info(
-                "Job completed successfully: %s",
-                job_id
-            )
-
             return
 
 
         except Exception as error:
 
             logger.exception(
-                "Processing failed for job %s",
-                job_id
+                "Processing failed"
             )
 
 
@@ -995,7 +781,6 @@ def process_image(
                     job.updated_at = datetime.utcnow()
 
                     db.commit()
-
 
             else:
 
@@ -1026,10 +811,8 @@ async def upload_image(
 
         raise HTTPException(
             status_code=400,
-
             detail=(
-                "Only JPEG, PNG and "
-                "WEBP images are supported"
+                "Only JPEG, PNG and WEBP images are supported"
             )
         )
 
@@ -1041,7 +824,6 @@ async def upload_image(
 
         raise HTTPException(
             status_code=400,
-
             detail="Uploaded file is empty"
         )
 
@@ -1050,7 +832,6 @@ async def upload_image(
 
         raise HTTPException(
             status_code=413,
-
             detail="File size exceeds 10 MB"
         )
 
@@ -1088,6 +869,7 @@ async def upload_image(
     try:
 
         job = ImageJob(
+
             id=processing_id,
 
             original_filename=file.filename,
@@ -1119,6 +901,7 @@ async def upload_image(
 
 
     thread = threading.Thread(
+
         target=process_image,
 
         args=(processing_id,),
@@ -1131,6 +914,7 @@ async def upload_image(
 
 
     return {
+
         "processing_id": processing_id,
 
         "status": "pending",
@@ -1169,12 +953,12 @@ def get_status(
 
             raise HTTPException(
                 status_code=404,
-
                 detail="Processing ID not found"
             )
 
 
         return {
+
             "processing_id": processing_id,
 
             "status": job.status,
@@ -1221,7 +1005,6 @@ def get_results(
 
             raise HTTPException(
                 status_code=404,
-
                 detail="Processing ID not found"
             )
 
@@ -1229,6 +1012,7 @@ def get_results(
         if job.status == "failed":
 
             return {
+
                 "processing_id": processing_id,
 
                 "status": "failed",
@@ -1242,6 +1026,7 @@ def get_results(
         if job.status != "completed":
 
             return {
+
                 "processing_id": processing_id,
 
                 "status": job.status,
@@ -1251,6 +1036,7 @@ def get_results(
 
 
         return {
+
             "processing_id": processing_id,
 
             "status": "completed",
@@ -1276,6 +1062,7 @@ def get_results(
 def health():
 
     return {
+
         "service":
             "Intelligent Media Processing Pipeline",
 

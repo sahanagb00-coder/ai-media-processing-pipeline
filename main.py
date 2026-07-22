@@ -5,7 +5,6 @@ import json
 import logging
 import threading
 import time
-import re
 
 from pathlib import Path
 from datetime import datetime
@@ -33,12 +32,12 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 DATABASE_URL = "sqlite:///./media_pipeline.db"
 
-MAX_FILE_SIZE = 10 * 1024 * 1024
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
     "image/png",
-    "image/webp"
+    "image/webp",
 }
 
 
@@ -48,7 +47,7 @@ ALLOWED_CONTENT_TYPES = {
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
 logger = logging.getLogger(__name__)
@@ -60,13 +59,13 @@ logger = logging.getLogger(__name__)
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    connect_args={"check_same_thread": False},
 )
 
 SessionLocal = sessionmaker(
     bind=engine,
     autocommit=False,
-    autoflush=False
+    autoflush=False,
 )
 
 Base = declarative_base()
@@ -84,7 +83,7 @@ class ImageJob(Base):
     status = Column(
         String,
         default="pending",
-        nullable=False
+        nullable=False,
     )
 
     result = Column(Text, nullable=True)
@@ -92,12 +91,12 @@ class ImageJob(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=datetime.utcnow,
     )
 
     updated_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=datetime.utcnow,
     )
 
 
@@ -106,18 +105,18 @@ class ImageHash(Base):
 
     image_id = Column(
         String,
-        primary_key=True
+        primary_key=True,
     )
 
     sha256 = Column(
         String,
         nullable=False,
-        index=True
+        index=True,
     )
 
     phash = Column(
         String,
-        nullable=False
+        nullable=False,
     )
 
 
@@ -125,20 +124,28 @@ Base.metadata.create_all(engine)
 
 
 # ============================================================
-# FASTAPI
+# FASTAPI APPLICATION
 # ============================================================
 
 app = FastAPI(
     title="Intelligent Media Processing Pipeline",
-    description="Asynchronous image analysis system",
-    version="1.0.0"
+    description=(
+        "AI-powered image quality analysis, "
+        "duplicate detection, metadata analysis, "
+        "screenshot detection, and image integrity checks."
+    ),
+    version="1.0.0",
 )
 
+
+# ============================================================
+# STATIC FRONTEND
+# ============================================================
 
 app.mount(
     "/static",
     StaticFiles(directory="static"),
-    name="static"
+    name="static",
 )
 
 
@@ -148,10 +155,10 @@ def home():
 
 
 # ============================================================
-# HASHING
+# SHA256 HASH
 # ============================================================
 
-def calculate_sha256(file_path):
+def calculate_sha256(file_path: str):
 
     sha256 = hashlib.sha256()
 
@@ -159,7 +166,7 @@ def calculate_sha256(file_path):
 
         for chunk in iter(
             lambda: file.read(8192),
-            b""
+            b"",
         ):
 
             sha256.update(chunk)
@@ -167,13 +174,17 @@ def calculate_sha256(file_path):
     return sha256.hexdigest()
 
 
-def calculate_phash(file_path):
+# ============================================================
+# PERCEPTUAL HASH
+# ============================================================
 
-    image = Image.open(file_path)
+def calculate_phash(file_path: str):
 
-    return str(
-        imagehash.phash(image)
-    )
+    with Image.open(file_path) as image:
+
+        return str(
+            imagehash.phash(image)
+        )
 
 
 # ============================================================
@@ -184,12 +195,12 @@ def detect_blur(image):
 
     gray = cv2.cvtColor(
         image,
-        cv2.COLOR_BGR2GRAY
+        cv2.COLOR_BGR2GRAY,
     )
 
     variance = cv2.Laplacian(
         gray,
-        cv2.CV_64F
+        cv2.CV_64F,
     ).var()
 
     threshold = 100
@@ -201,10 +212,10 @@ def detect_blur(image):
 
         "laplacian_variance": round(
             float(variance),
-            2
+            2,
         ),
 
-        "threshold": threshold
+        "threshold": threshold,
     }
 
 
@@ -216,7 +227,7 @@ def analyze_brightness(image):
 
     gray = cv2.cvtColor(
         image,
-        cv2.COLOR_BGR2GRAY
+        cv2.COLOR_BGR2GRAY,
     )
 
     brightness = float(
@@ -224,28 +235,33 @@ def analyze_brightness(image):
     )
 
     if brightness < 50:
+
         issue = "very_low_light"
 
     elif brightness < 90:
+
         issue = "low_light"
 
     elif brightness > 230:
+
         issue = "overexposed"
 
     else:
+
         issue = "normal"
 
     return {
         "issue": issue,
+
         "mean_brightness": round(
             brightness,
-            2
-        )
+            2,
+        ),
     }
 
 
 # ============================================================
-# DIMENSION VALIDATION
+# IMAGE DIMENSION ANALYSIS
 # ============================================================
 
 def analyze_dimensions(image):
@@ -260,7 +276,9 @@ def analyze_dimensions(image):
 
     return {
         "width": width,
+
         "height": height,
+
         "valid": valid,
 
         "issue": (
@@ -268,7 +286,7 @@ def analyze_dimensions(image):
             if valid
             else
             "low_resolution"
-        )
+        ),
     }
 
 
@@ -279,12 +297,14 @@ def analyze_dimensions(image):
 def detect_duplicate(
     job_id,
     sha256,
-    phash
+    phash,
 ):
 
     db = SessionLocal()
 
     try:
+
+        # Exact duplicate detection
 
         exact = db.query(
             ImageHash
@@ -292,7 +312,7 @@ def detect_duplicate(
 
             ImageHash.sha256 == sha256,
 
-            ImageHash.image_id != job_id
+            ImageHash.image_id != job_id,
 
         ).first()
 
@@ -302,8 +322,10 @@ def detect_duplicate(
             db.merge(
                 ImageHash(
                     image_id=job_id,
+
                     sha256=sha256,
-                    phash=phash
+
+                    phash=phash,
                 )
             )
 
@@ -311,24 +333,27 @@ def detect_duplicate(
 
             return {
                 "is_duplicate": True,
+
                 "type": "exact",
+
                 "matched_processing_id":
-                    exact.image_id
+                    exact.image_id,
             }
 
+
+        # Perceptual duplicate detection
+
+        current_hash = imagehash.hex_to_hash(
+            phash
+        )
 
         existing_images = db.query(
             ImageHash
         ).filter(
 
-            ImageHash.image_id != job_id
+            ImageHash.image_id != job_id,
 
         ).all()
-
-
-        current_hash = imagehash.hex_to_hash(
-            phash
-        )
 
 
         for item in existing_images:
@@ -351,8 +376,10 @@ def detect_duplicate(
                     db.merge(
                         ImageHash(
                             image_id=job_id,
+
                             sha256=sha256,
-                            phash=phash
+
+                            phash=phash,
                         )
                     )
 
@@ -360,22 +387,31 @@ def detect_duplicate(
 
                     return {
                         "is_duplicate": True,
+
                         "type": "perceptual",
+
                         "matched_processing_id":
                             item.image_id,
+
                         "hash_distance":
-                            int(distance)
+                            int(distance),
                     }
 
+
             except Exception:
+
                 continue
 
+
+        # Store new image hash
 
         db.merge(
             ImageHash(
                 image_id=job_id,
+
                 sha256=sha256,
-                phash=phash
+
+                phash=phash,
             )
         )
 
@@ -384,8 +420,10 @@ def detect_duplicate(
 
         return {
             "is_duplicate": False,
+
             "type": None,
-            "matched_processing_id": None
+
+            "matched_processing_id": None,
         }
 
 
@@ -395,17 +433,24 @@ def detect_duplicate(
 
 
 # ============================================================
-# VEHICLE NUMBER OCR
+# VEHICLE NUMBER DETECTION
 # ============================================================
 
 def extract_vehicle_number(file_path):
 
     return {
         "detected": False,
+
         "valid_format": False,
+
         "text": None,
-        "source": "OCR disabled for low-memory deployment",
-        "reason": "EasyOCR removed to prevent Render memory overflow"
+
+        "source": "OCR disabled",
+
+        "reason": (
+            "OCR is disabled to keep "
+            "Render memory usage low."
+        ),
     }
 
 
@@ -433,12 +478,14 @@ def analyze_screenshot(image):
         )
 
 
-    if width in [
+    common_widths = [
         1080,
         1170,
         1284,
-        1440
-    ]:
+        1440,
+    ]
+
+    if width in common_widths:
 
         score += 0.3
 
@@ -447,12 +494,14 @@ def analyze_screenshot(image):
         )
 
 
-    if height in [
+    common_heights = [
         1920,
         2532,
         2778,
-        2560
-    ]:
+        2560,
+    ]
+
+    if height in common_heights:
 
         score += 0.3
 
@@ -464,10 +513,10 @@ def analyze_screenshot(image):
     return {
         "likelihood": round(
             min(score, 1.0),
-            2
+            2,
         ),
 
-        "signals": signals
+        "signals": signals,
     }
 
 
@@ -481,21 +530,21 @@ def analyze_metadata(file_path):
 
     try:
 
-        image = Image.open(file_path)
+        with Image.open(file_path) as image:
 
-        exif = image.getexif()
+            exif = image.getexif()
 
 
-        for tag_id, value in exif.items():
+            for tag_id, value in exif.items():
 
-            tag_name = ExifTags.TAGS.get(
-                tag_id,
-                str(tag_id)
-            )
+                tag_name = ExifTags.TAGS.get(
+                    tag_id,
+                    str(tag_id),
+                )
 
-            metadata[tag_name] = str(
-                value
-            )
+                metadata[tag_name] = str(
+                    value
+                )
 
 
         software = metadata.get(
@@ -514,7 +563,7 @@ def analyze_metadata(file_path):
 
             "software": software,
 
-            "metadata": metadata
+            "metadata": metadata,
         }
 
 
@@ -522,20 +571,24 @@ def analyze_metadata(file_path):
 
         return {
             "has_exif": False,
+
             "metadata_count": 0,
+
             "software": None,
+
             "metadata": {},
-            "error": str(error)
+
+            "error": str(error),
         }
 
 
 # ============================================================
-# COMPLETE IMAGE ANALYSIS
+# IMAGE ANALYSIS
 # ============================================================
 
 def analyze_image(
     file_path,
-    job_id
+    job_id,
 ):
 
     image = cv2.imread(
@@ -563,55 +616,79 @@ def analyze_image(
     results = {}
 
 
+    # 1. Blur detection
+
     results["blur"] = detect_blur(
         image
     )
 
+
+    # 2. Brightness analysis
 
     results["brightness"] = analyze_brightness(
         image
     )
 
 
+    # 3. Dimension validation
+
     results["dimensions"] = analyze_dimensions(
         image
     )
 
 
+    # 4. File hash
+
     results["file_hash"] = sha256
 
+
+    # 5. Perceptual hash
 
     results["perceptual_hash"] = phash
 
 
+    # 6. Duplicate detection
+
     results["duplicate"] = detect_duplicate(
         job_id,
+
         sha256,
-        phash
+
+        phash,
     )
 
+
+    # 7. Vehicle number detection
 
     results["vehicle_number"] = extract_vehicle_number(
         file_path
     )
 
 
+    # 8. Screenshot detection
+
     results["screenshot_analysis"] = analyze_screenshot(
         image
     )
 
+
+    # 9. Metadata analysis
 
     results["metadata_analysis"] = analyze_metadata(
         file_path
     )
 
 
+    # ========================================================
+    # ISSUE SUMMARY
+    # ========================================================
+
     issues = []
 
 
     if results["blur"].get(
         "detected",
-        False
+        False,
     ):
 
         issues.append(
@@ -622,8 +699,11 @@ def analyze_image(
     if results["brightness"].get(
         "issue"
     ) in [
+
         "low_light",
-        "very_low_light"
+
+        "very_low_light",
+
     ]:
 
         issues.append(
@@ -642,7 +722,7 @@ def analyze_image(
 
     if not results["dimensions"].get(
         "valid",
-        False
+        False,
     ):
 
         issues.append(
@@ -652,7 +732,7 @@ def analyze_image(
 
     if results["duplicate"].get(
         "is_duplicate",
-        False
+        False,
     ):
 
         issues.append(
@@ -662,7 +742,7 @@ def analyze_image(
 
     if results["screenshot_analysis"].get(
         "likelihood",
-        0
+        0,
     ) >= 0.5:
 
         issues.append(
@@ -674,9 +754,9 @@ def analyze_image(
 
         "issues_detected": issues,
 
-        "has_issues": len(
+        "has_issues": bool(
             issues
-        ) > 0,
+        ),
 
         "total_checks": 8,
 
@@ -684,12 +764,12 @@ def analyze_image(
 
             "failed"
 
-            if len(issues) > 0
+            if issues
 
             else
 
             "passed"
-        )
+        ),
     }
 
 
@@ -697,17 +777,18 @@ def analyze_image(
 
 
 # ============================================================
-# ASYNCHRONOUS PROCESSING
+# ASYNCHRONOUS IMAGE PROCESSING
 # ============================================================
 
 def process_image(
     job_id,
-    max_retries=3
+    max_retries=3,
 ):
 
     for attempt in range(
         1,
-        max_retries + 1
+
+        max_retries + 1,
     ):
 
         db = SessionLocal()
@@ -721,7 +802,7 @@ def process_image(
                 ImageJob
             ).filter(
 
-                ImageJob.id == job_id
+                ImageJob.id == job_id,
 
             ).first()
 
@@ -740,14 +821,14 @@ def process_image(
 
             results = analyze_image(
                 job.file_path,
-                job_id
+
+                job_id,
             )
 
 
             job.result = json.dumps(
                 results
             )
-
 
             job.status = "completed"
 
@@ -758,13 +839,19 @@ def process_image(
             db.commit()
 
 
+            logger.info(
+                "Image processing completed: %s",
+
+                job_id,
+            )
+
             return
 
 
         except Exception as error:
 
             logger.exception(
-                "Processing failed"
+                "Image processing failed"
             )
 
 
@@ -802,7 +889,7 @@ def process_image(
     "/api/v1/images"
 )
 async def upload_image(
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
 ):
 
     if file.content_type not in (
@@ -811,9 +898,11 @@ async def upload_image(
 
         raise HTTPException(
             status_code=400,
+
             detail=(
-                "Only JPEG, PNG and WEBP images are supported"
-            )
+                "Only JPEG, PNG and WEBP "
+                "images are supported"
+            ),
         )
 
 
@@ -824,7 +913,8 @@ async def upload_image(
 
         raise HTTPException(
             status_code=400,
-            detail="Uploaded file is empty"
+
+            detail="Uploaded file is empty",
         )
 
 
@@ -832,7 +922,8 @@ async def upload_image(
 
         raise HTTPException(
             status_code=413,
-            detail="File size exceeds 10 MB"
+
+            detail="File size exceeds 10 MB",
         )
 
 
@@ -855,7 +946,8 @@ async def upload_image(
 
     with open(
         file_path,
-        "wb"
+
+        "wb",
     ) as output:
 
         output.write(
@@ -884,7 +976,7 @@ async def upload_image(
                 content
             ),
 
-            status="pending"
+            status="pending",
         )
 
 
@@ -906,7 +998,7 @@ async def upload_image(
 
         args=(processing_id,),
 
-        daemon=True
+        daemon=True,
     )
 
 
@@ -919,8 +1011,10 @@ async def upload_image(
 
         "status": "pending",
 
-        "message":
-            "Image uploaded and queued for asynchronous processing"
+        "message": (
+            "Image uploaded and queued "
+            "for asynchronous processing"
+        ),
     }
 
 
@@ -932,7 +1026,7 @@ async def upload_image(
     "/api/v1/images/{processing_id}/status"
 )
 def get_status(
-    processing_id: str
+    processing_id: str,
 ):
 
     db = SessionLocal()
@@ -944,7 +1038,7 @@ def get_status(
             ImageJob
         ).filter(
 
-            ImageJob.id == processing_id
+            ImageJob.id == processing_id,
 
         ).first()
 
@@ -953,7 +1047,8 @@ def get_status(
 
             raise HTTPException(
                 status_code=404,
-                detail="Processing ID not found"
+
+                detail="Processing ID not found",
             )
 
 
@@ -967,7 +1062,7 @@ def get_status(
 
             "created_at": job.created_at,
 
-            "updated_at": job.updated_at
+            "updated_at": job.updated_at,
         }
 
 
@@ -984,7 +1079,7 @@ def get_status(
     "/api/v1/images/{processing_id}/results"
 )
 def get_results(
-    processing_id: str
+    processing_id: str,
 ):
 
     db = SessionLocal()
@@ -996,7 +1091,7 @@ def get_results(
             ImageJob
         ).filter(
 
-            ImageJob.id == processing_id
+            ImageJob.id == processing_id,
 
         ).first()
 
@@ -1005,7 +1100,8 @@ def get_results(
 
             raise HTTPException(
                 status_code=404,
-                detail="Processing ID not found"
+
+                detail="Processing ID not found",
             )
 
 
@@ -1019,7 +1115,7 @@ def get_results(
 
                 "analysis": None,
 
-                "error": job.error_message
+                "error": job.error_message,
             }
 
 
@@ -1031,7 +1127,7 @@ def get_results(
 
                 "status": job.status,
 
-                "analysis": None
+                "analysis": None,
             }
 
 
@@ -1043,7 +1139,7 @@ def get_results(
 
             "analysis": json.loads(
                 job.result
-            )
+            ),
         }
 
 
@@ -1063,12 +1159,12 @@ def health():
 
     return {
 
-        "service":
-            "Intelligent Media Processing Pipeline",
+        "service": (
+            "Intelligent Media "
+            "Processing Pipeline"
+        ),
 
-        "status":
-            "running",
+        "status": "running",
 
-        "version":
-            "1.0.0"
+        "version": "1.0.0",
     }
